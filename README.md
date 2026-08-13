@@ -11,13 +11,7 @@
 
 ## 基础知识
 
-一个 LLM serving 系统大概经历
-
-```mermaid
-graph LR
-A(HTTP Request) --> B(Tokenizer) --> C(Request Queu) --> D(Scheduler) --> E(Batch)
---> F(Model) --> G(GPU Kernels) --> H(logits) --> I(Sampler) --> J(next token)
-```
+LLM 推理系统参考[]()
 
 本项目研究以下内容
 
@@ -52,11 +46,15 @@ A(HTTP Request) --> B(Tokenizer) --> C(Request Queu) --> D(Scheduler) --> E(Batc
 ────────────────────────────────────────
 ```
 
+### 基础算子
+
+参考 [Euler0525/leetgpu-challenges](https://github.com/Euler0525/leetgpu-challenges)
+
 ### 术语
 
-- 预热`warmup`：第一次执行可能包括 library initialization, kernel loading, JIT compilation, cache effects…这些不应该算在 steady-state performance中，所以性能测试通常是 warmup -> benchmark
-- 延迟`latency`：完成一次任务要多久
-- 吞吐量`throughput`：单位时间完成的工作量
+- 预热 `warmup`：第一次执行可能包括 library initialization, kernel loading, JIT compilation, cache effects…这些不应该算在 steady-state performance 中，所以性能测试通常是 warmup -> benchmark
+- 延迟 `latency`：完成一次任务要多久
+- 吞吐量 `throughput`：单位时间完成的工作量
 
 LLM servering 的 scheduler 通常需要权衡 Latency VS Throughput.
 
