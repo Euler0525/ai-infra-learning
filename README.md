@@ -52,6 +52,14 @@ A(HTTP Request) --> B(Tokenizer) --> C(Request Queu) --> D(Scheduler) --> E(Batc
 ────────────────────────────────────────
 ```
 
+### 术语
+
+- 预热`warmup`：第一次执行可能包括 library initialization, kernel loading, JIT compilation, cache effects…这些不应该算在 steady-state performance中，所以性能测试通常是 warmup -> benchmark
+- 延迟`latency`：完成一次任务要多久
+- 吞吐量`throughput`：单位时间完成的工作量
+
+LLM servering 的 scheduler 通常需要权衡 Latency VS Throughput.
+
 ## 开发环境
 
 参考博客 [AlamaLinux 安装流程](https://euler0525.github.io/blogs/posts/1dc8999e/)，包括 Linux, Pytorch, NVIDIA Driver CUDA Toolkit 等环境的配置。
