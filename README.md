@@ -72,3 +72,9 @@ GPU process
 ```
 
 - `nvcc`：NVIDIA CUDA Compiler，即 CUDA 编译工具链
+
+
+
+## 参考资料
+
+[Qwen/Qwen2.5-0.5B-Instruct](https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct)
