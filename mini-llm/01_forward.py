@@ -1,3 +1,6 @@
+import json
+from pathlib import Path
+
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
@@ -6,6 +9,7 @@ MODEL_ID = "Qwen/Qwen2.5-0.5B-Instruct"
 REVISION = "7ae557604adf67be50417f59c2c2f167def9a775"
 PROMPT = "What's for lunch today?"
 DEVICE = "cuda"
+MAX_NEW_TOKENS = 64
 
 if not torch.cuda.is_available():
     raise RuntimeError("NO available NVIDIA GPU with CUDA.")
@@ -62,7 +66,7 @@ print()
 torch.cuda.reset_peak_memory_stats()
 
 with torch.inference_mode():
-    outputs = model(**inputs, use_cache=False)
+    outputs = model(**inputs, use_cache=True)
 
 # [batch, sequence, vocabulary]  Qwen2.5-0.5B 的词表大小是 151936，所以每个序列位置都会得到 151936 个候选分数
 print("outputs:\n", outputs, "\t", outputs.logits.shape)
@@ -91,6 +95,93 @@ print()
 print("next token:\n", tokenizer.decode([next_token_id]))
 print()
 
+# Greedy Decoding
+eos_token_id = tokenizer.eos_token_id
+generated_token_ids = [next_token_id]
+past_key_values = outputs.past_key_values
+decode_attention_mask = inputs.attention_mask
+stop_reason = None
+
+print(
+    f"[prefill -> token 1] "
+    f"id={next_token_id}, "
+    f"text={repr(tokenizer.decode([next_token_id]))}"
+    "\n"
+)
+
+if next_token_id == eos_token_id:
+    stop_reason = "eos"
+
+with torch.inference_mode():
+    while (
+        stop_reason is None
+        and len(generated_token_ids) < MAX_NEW_TOKENS
+    ):
+        decode_input_ids = torch.tensor(
+            [[generated_token_ids[-1]]],
+            dtype=inputs.input_ids.dtype,
+            device=DEVICE,
+        )
+
+        decode_attention_mask = torch.cat(
+            [
+                decode_attention_mask,
+                torch.ones(
+                    (1, 1),
+                    dtype=decode_attention_mask.dtype,
+                    device=DEVICE,
+                ),
+            ],
+            dim=-1,
+        )
+
+        decode_outputs = model(
+            input_ids=decode_input_ids,
+            attention_mask=decode_attention_mask,
+            past_key_values=past_key_values,
+            use_cache=True,
+        )
+
+        # Update KV Cache
+        past_key_values = decode_outputs.past_key_values
+
+        decode_last_logits = decode_outputs.logits[:, -1, :]
+
+        # Greedy
+        next_token_id = (
+            decode_last_logits.argmax(dim=-1).item()
+        )
+
+        generated_token_ids.append(next_token_id)
+
+        print(
+            f"[decode -> token {len(generated_token_ids)}]\t"
+            f"input_shape={list(decode_input_ids.shape)}, "
+            f"logits_shape={list(decode_outputs.logits.shape)}, "
+            f"id={next_token_id}, "
+            f"text={repr(tokenizer.decode([next_token_id]))}"
+        )
+
+        if next_token_id == eos_token_id:
+            stop_reason = "eos"
+
+if stop_reason is None:
+    stop_reason = "max_new_tokens"
+
+generated_text = tokenizer.decode(
+    generated_token_ids,
+    skip_special_tokens=True,
+)
+
+print()
+print("generated token ids:\n", generated_token_ids)
+print()
+print("generated text:\n", generated_text)
+print()
+print("stop reason:", stop_reason)
+print()
+
+
 reference = {
     "model_id": MODEL_ID,
     "revision": REVISION,
@@ -101,8 +192,10 @@ reference = {
     "full_logits_shape": list(outputs.logits.shape),
     "last_logits_shape": list(last_logits.shape),
     "top_k": top_k,
-    "next_token_id": next_token_id,
-    "next_token_text": tokenizer.decode([next_token_id]),
+    "generated_token_ids": generated_token_ids,
+    "generated_text": generated_text,
+    "stop_reason": stop_reason,
+    "max_new_tokens": MAX_NEW_TOKENS,
     "peak_allocated_mib": round(
         torch.cuda.max_memory_allocated() / 1024**2,
         2,
@@ -111,82 +204,53 @@ reference = {
 
 print("peak allocated MiB:", reference["peak_allocated_mib"])
 
+output_path = (
+    Path(__file__).parent
+    / "fixtures"
+    / "01_forward.json"
+)
+
+output_path.parent.mkdir(
+    parents=True,
+    exist_ok=True,
+)
+
+output_path.write_text(
+    json.dumps(
+        reference,
+        ensure_ascii=False,
+        indent=2,
+    )
+    + "\n",
+    encoding="utf-8",
+)
+
+print("reference saved to:", output_path)
+
+
 """
-Loading weights: 100%|████████████████████████████████████████████████████████████████████████████████████████| 290/290 [00:00<00:00, 12927.36it/s]
-message:
- [{'role': 'user', 'content': "What's for lunch today?"}]
-
-rendered_prompt:
- <|im_start|>system
-You are Qwen, created by Alibaba Cloud. You are a helpful assistant.<|im_end|>
-<|im_start|>user
-What's for lunch today?<|im_end|>
-<|im_start|>assistant
-
-inputs:
- {'input_ids': tensor([[151644,   8948,    198,   2610,    525,   1207,  16948,     11,   3465,
-            553,  54364,  14817,     13,   1446,    525,    264,  10950,  17847,
-             13, 151645,    198, 151644,    872,    198,   3838,    594,    369,
-          15786,   3351,     30, 151645,    198, 151644,  77091,    198]],
-       device='cuda:0'), 'attention_mask': tensor([[1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-         1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]], device='cuda:0')}    torch.Size([1, 35])
-
-token                    -> token id:
-[ 1]'<|im_start|>'       -> 151644
-[ 2]'system'             -> 8948
-[ 3]'Ċ'                  -> 198
-[ 4]'You'                -> 2610
-[ 5]'Ġare'               -> 525
-[ 6]'ĠQ'                 -> 1207
-[ 7]'wen'                -> 16948
-[ 8]','                  -> 11
-[ 9]'Ġcreated'           -> 3465
-[10]'Ġby'                -> 553
-[11]'ĠAlibaba'           -> 54364
-[12]'ĠCloud'             -> 14817
-[13]'.'                  -> 13
-[14]'ĠYou'               -> 1446
-[15]'Ġare'               -> 525
-[16]'Ġa'                 -> 264
-[17]'Ġhelpful'           -> 10950
-[18]'Ġassistant'         -> 17847
-[19]'.'                  -> 13
-[20]'<|im_end|>'         -> 151645
-[21]'Ċ'                  -> 198
-[22]'<|im_start|>'       -> 151644
-[23]'user'               -> 872
-[24]'Ċ'                  -> 198
-[25]'What'               -> 3838
-[26]"'s"                 -> 594
-[27]'Ġfor'               -> 369
-[28]'Ġlunch'             -> 15786
-[29]'Ġtoday'             -> 3351
-[30]'?'                  -> 30
-[31]'<|im_end|>'         -> 151645
-[32]'Ċ'                  -> 198
-[33]'<|im_start|>'       -> 151644
-[34]'assistant'          -> 77091
-[35]'Ċ'                  -> 198
-
-outputs:
- CausalLMOutputWithPast(loss=None, logits=tensor([[[ 3.8750,  7.7812,  3.2969,  ..., -1.0781, -1.0781, -1.0781],
-         [ 5.4062, 11.2500,  7.2500,  ...,  0.1768,  0.1768,  0.1768],
-         [ 7.4062, 10.6250, 13.1875,  ...,  0.3008,  0.3008,  0.3008],
-         ...,
-         [ 1.9766,  5.2500,  7.6250,  ..., -1.1641, -1.1641, -1.1641],
-         [ 3.0000,  9.1250,  1.7344,  ..., -3.1875, -3.1875, -3.1875],
-         [ 7.3438, 14.0625,  7.1250,  ..., -3.1094, -3.1094, -3.1094]]],
-       device='cuda:0', dtype=torch.bfloat16), past_key_values=None, hidden_states=None, attentions=None)        torch.Size([1, 35, 151936])
-
-last_logits:
- tensor([[ 7.3438, 14.0625,  7.1250,  ..., -3.1094, -3.1094, -3.1094]],
-       device='cuda:0', dtype=torch.bfloat16)    torch.Size([1, 151936])
-
-top 5:
- [{'token_id': 2121, 'logit': 19.625, 'text': 'As'}, {'token_id': 40, 'logit': 19.0, 'text': 'I'}, {'token_id': 15364, 'logit': 18.375, 'text': 'Today'}, {'token_id': 43, 'logit': 17.875, 'text': 'L'}, {'token_id': 9707, 'logit': 17.75, 'text': 'Hello'}]
-
-next token:
- As
-
-peak allocated MiB: 988.73
+Tokenizer
+    ↓
+Chat Template
+    ↓
+Token IDs
+    ↓
+Prefill
+    ├── Full logits
+    ├── Next-token prediction
+    └── KV Cache
+           ↓
+        Decode
+           ↓
+        Greedy argmax
+           ↓
+        Next token
+           ↓
+       Update KV Cache
+           ↓
+        Decode...
+           ↓
+    EOS / max_new_tokens
+           ↓
+          Stop
 """
