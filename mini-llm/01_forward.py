@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 
 import torch
+import transformers
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 
@@ -27,6 +28,7 @@ model = AutoModelForCausalLM.from_pretrained(
     dtype=torch.bfloat16,
     local_files_only=True,
 ).to(device=DEVICE)
+
 model.eval()
 
 # Eval
@@ -183,6 +185,10 @@ print()
 
 
 reference = {
+    "gpu_name": torch.cuda.get_device_name(),
+    "torch_version": torch.__version__,
+    "cuda_version": torch.version.cuda,
+    "transformers_version": transformers.__version__,
     "model_id": MODEL_ID,
     "revision": REVISION,
     "prompt": PROMPT,
@@ -200,9 +206,10 @@ reference = {
         torch.cuda.max_memory_allocated() / 1024**2,
         2,
     ),
+    "eos_token_id": tokenizer.eos_token_id,
+    "prompt_tokens": inputs.input_ids.shape[-1],
+    "generated_tokens": len(generated_token_ids),
 }
-
-print("peak allocated MiB:", reference["peak_allocated_mib"])
 
 output_path = (
     Path(__file__).parent

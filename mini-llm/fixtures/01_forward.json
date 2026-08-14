@@ -1,4 +1,8 @@
 {
+  "gpu_name": "NVIDIA GeForce RTX 4060 Laptop GPU",
+  "torch_version": "2.5.1+cu124",
+  "cuda_version": "12.4",
+  "transformers_version": "5.15.0",
   "model_id": "Qwen/Qwen2.5-0.5B-Instruct",
   "revision": "7ae557604adf67be50417f59c2c2f167def9a775",
   "prompt": "What's for lunch today?",
@@ -151,5 +155,8 @@
   "generated_text": "As an AI language model, I don't have access to real-time information about your lunch plans. However, I can provide you with some general suggestions based on common lunch options:\n\n1. Sandwiches: You could try making a classic sandwich with bread, cheese, and various toppings like ham, turkey, lettuce, tomato",
   "stop_reason": "max_new_tokens",
   "max_new_tokens": 64,
-  "peak_allocated_mib": 989.15
+  "peak_allocated_mib": 989.15,
+  "eos_token_id": 151645,
+  "prompt_tokens": 35,
+  "generated_tokens": 64
 }
