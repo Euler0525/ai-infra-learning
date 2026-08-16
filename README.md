@@ -1,6 +1,6 @@
 # AI Infra Learning
 
-一个用于理解 Decoder-only 模型推理主链路的最小工程。仓库当前提供单请求生成基线：使用 Hugging Face Qwen 模型，显式拆分 Prefill 和 Decode，复用 KV Cache，并记录两阶段的 GPU 执行时间。
+一个用于理解 Decoder-only 模型推理主链路的最小工程。仓库当前提供单请求生成基线，以及纯 PyTorch Qwen TransformerBlock 参考实现和回归测试。
 
 ## 目录结构
 
@@ -10,6 +10,7 @@
 │   ├── __init__.py
 │   ├── config.py                 # 模型、revision、设备与精度配置
 │   ├── loading.py                # tokenizer、模型和 prompt 加载
+│   ├── model/                    # RMSNorm、RoPE、Attention、MLP 与 TransformerBlock
 │   ├── engine/
 │   │   ├── generation.py         # Prefill、Decode 与生成循环
 │   │   └── state.py              # KV 状态和生成结果数据结构
@@ -17,6 +18,7 @@
 │       └── greedy.py             # greedy token 选择
 ├── scripts/
 │   └── generate.py               # 命令行生成入口
+├── tests/                         # 分层、logits 与 greedy token 回归测试
 ├── docs/                         # 独立项目文档
 ├── pyproject.toml
 └── README.md
@@ -130,13 +132,19 @@ GPU process
 在仓库根目录安装项目及依赖
 
 ```powershell
-python -m pip install -e .
+python -m pip install -e ".[test]"
 ```
 
 运行生成入口
 
 ```powershell
 python -m scripts.generate --prompt "Explain KV cache briefly." --max-new-tokens 32
+```
+
+运行回归测试
+
+```powershell
+python -m pytest
 ```
 
 ## 参考资料
