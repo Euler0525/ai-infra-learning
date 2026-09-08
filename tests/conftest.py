@@ -10,7 +10,7 @@ def tiny_qwen_pair() -> tuple[
     Qwen2ForCausalLM,
     TorchReferenceQwen,
 ]:
-    torch.manual_seed(7)
+    torch.manual_seed(42)
     config = Qwen2Config(
         vocab_size=97,
         hidden_size=32,

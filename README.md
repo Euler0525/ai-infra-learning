@@ -16,6 +16,7 @@
 │   │   └── state.py              # KV 状态和生成结果数据结构
 │   └── sampling/
 │       └── greedy.py             # greedy token 选择
+├── mha_mqa_lab/                   # MHA/MQA 数学、KV Cache 与带宽实验
 ├── scripts/
 │   └── generate.py               # 命令行生成入口
 ├── tests/                         # 分层、logits 与 greedy token 回归测试
@@ -146,6 +147,22 @@ python -m scripts.generate --prompt "Explain KV cache briefly." --max-new-tokens
 ```powershell
 python -m pytest
 ```
+
+## MHA 与 MQA 实验
+
+独立实验目录 `mha_mqa_lab/` 从数学、张量维度、KV Cache 和显存带宽角度比较 MHA 与 MQA。先运行维度与等价关系演示：
+
+```powershell
+python -m mha_mqa_lab.demo
+```
+
+在 CUDA GPU 上运行带显存保护的单层 decode 微基准：
+
+```powershell
+python -m mha_mqa_lab.benchmark
+```
+
+推导、论文数据、测量口径和参数说明见 [MHA/MQA 实验文档](mha_mqa_lab/README.md)。
 
 ## 参考资料
 
