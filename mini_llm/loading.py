@@ -39,8 +39,9 @@ def encode_prompt(
     prompt: str,
     device: str,
 ) -> Any:
+    message = [{"role": "user", "content": prompt}]
     rendered_prompt = tokenizer.apply_chat_template(
-        [{"role": "user", "content": prompt}],
+        message,
         tokenize=False,
         add_generation_prompt=True,
     )
