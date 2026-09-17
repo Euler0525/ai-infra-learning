@@ -7,7 +7,7 @@ MODEL_ID = "Qwen/Qwen2.5-0.5B-Instruct"
 REVISION = "7ae557604adf67be50417f59c2c2f167def9a775"
 PROMPT = "What's for lunch today?"
 DEVICE = "cuda"
-MAX_NEW_TOKENS = 64
+MAX_NEW_TOKENS = 10
 
 if not torch.cuda.is_available():
     raise RuntimeError("NO available NVIDIA GPU with CUDA.")
