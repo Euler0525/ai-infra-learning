@@ -8,12 +8,15 @@
 .
 ├── mini_llm/
 │   ├── __init__.py
-│   ├── config.py                 # 配置、tokenizer/模型加载与 prompt 编码
+│   ├── config/                   # 模型、引擎与采样配置
 │   ├── generate.py               # 单请求 greedy 生成入口
-│   ├── utils.py                  # CUDA 同步计时
+│   ├── preflight.py              # CUDA、BF16 与本地模型检查
+│   ├── reference.py              # Hugging Face 正确性基线
+│   ├── utils/                    # CUDA 同步计时
 │   └── engine/
 │       ├── prefill_decode.py     # Prefill、KV Cache 复用与单 token Decode
 │       └── state.py              # Decode 状态、单步输出与生成结果
+├── tests/                        # 配置和环境测试
 ├── mha_mqa_lab/                  # MHA/MQA 数学、KV Cache 与带宽实验
 ├── qwen2p5.py                    # 单文件的详细推理观察脚本
 ├── pyproject.toml
@@ -29,7 +32,7 @@ Prompt -> Chat Template -> Token IDs -> Prefill -> KV Cache
        -> 逐 token Decode -> greedy argmax -> EOS / max_new_tokens
 ```
 
-`mini_llm/model/` 是用于理解结构和正确性对照的纯 PyTorch 实现，包含 RMSNorm、RoPE、GQA、SwiGLU 和多层 Decoder。它目前只支持完整序列前向，不包含 KV Cache 或权重转换逻辑；命令行生成仍使用 Hugging Face 模型。
+当前阶段使用 Hugging Face 模型作为正确性基线；后续自定义模型、算子和 kernel 分别放入 `models/`、`layers/` 和 `kernels/`。
 
 ## 基础知识
 
@@ -148,7 +151,13 @@ python -m pip install -e ".[test]"
 python -m mini_llm.generate --prompt "Explain KV cache briefly." --max-new-tokens 32
 ```
 
-模型默认使用 CUDA、BF16 和 `local_files_only=True`，因此需要 NVIDIA GPU，且指定 revision 的模型权重必须已缓存在本地。若要观察 token、logits、Top 5 候选、KV Cache 和显存峰值，可运行：
+模型默认使用 CUDA、BF16 和 `local_files_only=True`，因此需要 NVIDIA GPU，且指定 revision 的模型权重必须已缓存在本地。运行环境检查：
+
+```powershell
+python -m mini_llm.preflight
+```
+
+若要观察 token、logits、Top 5 候选、KV Cache 和显存峰值，可运行：
 
 ```powershell
 python qwen2p5.py
