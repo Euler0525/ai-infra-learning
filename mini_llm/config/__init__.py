@@ -1,9 +1,10 @@
-import torch
-from typing import Any
 from dataclasses import dataclass
+from typing import Any
+
+import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
-# FIXME
+
 REFERENCE_PROMPT = "What's for lunch today?"
 DEFAULT_MAX_NEW_TOKENS = 10
 

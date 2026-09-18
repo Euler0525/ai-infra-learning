@@ -1,6 +1,7 @@
-import torch
 from time import perf_counter
 from typing import Any, Callable
+
+import torch
 
 
 def timed_device_call(
