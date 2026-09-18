@@ -23,7 +23,7 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def main() -> None:
+def run_qwen2p5() -> None:
     args = parse_args()
     settings = ModelSettings()
     tokenizer = load_tokenizer(settings)
@@ -85,4 +85,4 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    run_qwen2p5()
