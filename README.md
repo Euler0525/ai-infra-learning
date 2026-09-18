@@ -1,6 +1,6 @@
 # AI Infra Learning
 
-一个用于理解 Decoder-only 模型推理主链路的最小工程。仓库当前提供单请求生成基线，以及纯 PyTorch Qwen TransformerBlock 参考实现和回归测试。
+一个用于理解 Decoder-only 模型推理主链路的最小工程。仓库当前提供单请求 greedy 生成基线、纯 PyTorch Qwen 参考实现，以及 MHA/MQA 的 KV Cache 与显存带宽实验。
 
 ## 目录结构
 
@@ -8,22 +8,28 @@
 .
 ├── mini_llm/
 │   ├── __init__.py
-│   ├── config.py                 # 模型、revision、设备与精度配置
-│   ├── loading.py                # tokenizer、模型和 prompt 加载
-│   ├── model/                    # RMSNorm、RoPE、Attention、MLP 与 TransformerBlock
-│   ├── engine/
-│   │   ├── generation.py         # Prefill、Decode 与生成循环
-│   │   └── state.py              # KV 状态和生成结果数据结构
-│   └── sampling/
-│       └── greedy.py             # greedy token 选择
-├── mha_mqa_lab/                   # MHA/MQA 数学、KV Cache 与带宽实验
-├── scripts/
-│   └── generate.py               # 命令行生成入口
-├── tests/                         # 分层、logits 与 greedy token 回归测试
-├── docs/                         # 独立项目文档
+│   ├── config.py                 # 配置、tokenizer/模型加载与 prompt 编码
+│   ├── generate.py               # 单请求 greedy 生成入口
+│   ├── utils.py                  # CUDA 同步计时
+│   └── engine/
+│       ├── prefill_decode.py     # Prefill、KV Cache 复用与单 token Decode
+│       └── state.py              # Decode 状态、单步输出与生成结果
+├── mha_mqa_lab/                  # MHA/MQA 数学、KV Cache 与带宽实验
+├── qwen2p5.py                    # 单文件的详细推理观察脚本
 ├── pyproject.toml
 └── README.md
 ```
+
+## 核心推理链路
+
+`mini_llm.generate` 使用 Hugging Face `AutoModelForCausalLM` 加载本地 Qwen2.5 权重，并显式拆分推理过程：
+
+```text
+Prompt -> Chat Template -> Token IDs -> Prefill -> KV Cache
+       -> 逐 token Decode -> greedy argmax -> EOS / max_new_tokens
+```
+
+`mini_llm/model/` 是用于理解结构和正确性对照的纯 PyTorch 实现，包含 RMSNorm、RoPE、GQA、SwiGLU 和多层 Decoder。它目前只支持完整序列前向，不包含 KV Cache 或权重转换逻辑；命令行生成仍使用 Hugging Face 模型。
 
 ## 基础知识
 
@@ -139,13 +145,13 @@ python -m pip install -e ".[test]"
 运行生成入口
 
 ```powershell
-python -m scripts.generate --prompt "Explain KV cache briefly." --max-new-tokens 32
+python -m mini_llm.generate --prompt "Explain KV cache briefly." --max-new-tokens 32
 ```
 
-运行回归测试
+模型默认使用 CUDA、BF16 和 `local_files_only=True`，因此需要 NVIDIA GPU，且指定 revision 的模型权重必须已缓存在本地。若要观察 token、logits、Top 5 候选、KV Cache 和显存峰值，可运行：
 
 ```powershell
-python -m pytest
+python qwen2p5.py
 ```
 
 ## MHA 与 MQA 实验
