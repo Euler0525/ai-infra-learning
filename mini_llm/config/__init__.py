@@ -1,64 +1,22 @@
-from dataclasses import dataclass
-from typing import Any
-
-import torch
-from transformers import AutoModelForCausalLM, AutoTokenizer
-
-
-REFERENCE_PROMPT = "What's for lunch today?"
-DEFAULT_MAX_NEW_TOKENS = 10
-
-
-@dataclass(frozen=True)
-class ModelSettings:
-    model_id: str = "Qwen/Qwen2.5-0.5B-Instruct"
-    revision: str = "7ae557604adf67be50417f59c2c2f167def9a775"
-    device: str = "cuda"
-    dtype: torch.dtype = torch.bfloat16
-    local_files_only: bool = True
+from mini_llm.config.engine import EngineConfig
+from mini_llm.config.model import ModelConfig
+from mini_llm.config.sampling import SamplingParams
+from mini_llm.config.settings import (
+    DEFAULT_MAX_NEW_TOKENS,
+    REFERENCE_PROMPT,
+    ModelSettings,
+)
+from mini_llm.reference import encode_prompt, load_model, load_tokenizer
 
 
-def require_device(settings: ModelSettings) -> None:
-    if settings.device == "cuda" and not torch.cuda.is_available():
-        raise RuntimeError("No available NVIDIA GPU with CUDA.")
-
-
-def load_tokenizer(settings: ModelSettings) -> Any:
-    return AutoTokenizer.from_pretrained(
-        settings.model_id,
-        revision=settings.revision,
-        local_files_only=settings.local_files_only,
-    )
-
-
-def load_model(
-    settings: ModelSettings,
-    attention_implementation: str | None = None,
-) -> Any:
-    require_device(settings)
-    model = AutoModelForCausalLM.from_pretrained(
-        settings.model_id,
-        revision=settings.revision,
-        dtype=settings.dtype,
-        attn_implementation=attention_implementation,
-        local_files_only=settings.local_files_only,
-    ).to(device=settings.device)
-    model.eval()
-    return model
-
-
-def encode_prompt(
-    tokenizer: Any,
-    prompt: str,
-    device: str,
-) -> Any:
-    message = [{"role": "user", "content": prompt}]
-    rendered_prompt = tokenizer.apply_chat_template(
-        message,
-        tokenize=False,
-        add_generation_prompt=True,
-    )
-    return tokenizer(
-        rendered_prompt,
-        return_tensors="pt",
-    ).to(device=device)
+__all__ = [
+    "DEFAULT_MAX_NEW_TOKENS",
+    "REFERENCE_PROMPT",
+    "EngineConfig",
+    "ModelConfig",
+    "ModelSettings",
+    "SamplingParams",
+    "encode_prompt",
+    "load_model",
+    "load_tokenizer",
+]
