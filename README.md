@@ -122,6 +122,33 @@ if __name__ == "__main__":
 """
 ```
 
+### Decoder Layer
+
+整个 Transformer Decoder 会将一个 Decoder Layer 会堆叠多次，每一层结构如下
+
+```plaintext
+DecoderLayer
+│
+├── Attention Block
+│   ├── RMSNorm              # 控制数据规模
+│   ├── GQA Self-Attention   # 和其他 token 交流提取上下文信息
+│   └── Residual Connection  # 保留原信息 + 新上下文信息
+│
+└── FFN Block
+    ├── RMSNorm              # 再次稳定数值
+    ├── SwiGLU MLP           # 每个 token 内部做非线性特征变换
+    └── Residual Connection  # 保留旧信息 + 新特征
+```
+
+先让每个 token看一遍上下文，再让每个 token 自己做一次非线性加工，将结果传给下一层。数学表达式为
+
+$$
+\begin{aligned}
+x' &= x + \mathrm{Attention}(\mathrm{RMSNorm}(x))\\
+y  &= x' + \mathrm{MLP}(\mathrm{RMSNorm}(x'))
+\end{aligned}
+$$
+
 ## 环境配置
 
 参考 [Euler0525@Blog | AlamaLinux 安装流程](https://euler0525.github.io/blogs/posts/1dc8999e/)，包括 Linux, Pytorch, NVIDIA Driver CUDA Toolkit 等环境的配置。
