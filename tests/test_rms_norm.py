@@ -20,15 +20,18 @@ def test_matches_reference(
 
     x_fp32 = x.float()
     expected = (
-        x_fp32
-        * torch.rsqrt(x_fp32.square().mean(dim=-1, keepdim=True) + norm.eps)
-        * norm.weight.float()
+        norm.weight
+        * (
+            x_fp32
+            * torch.rsqrt(x_fp32.square().mean(dim=-1, keepdim=True) + norm.eps)
+        ).to(dtype)
     ).to(dtype)
     actual = norm(x)
 
     assert actual.dtype == dtype
     tolerance = (1e-2, 1e-2) if dtype == torch.bfloat16 else (1e-4, 1e-5)
-    torch.testing.assert_close(actual, expected, rtol=tolerance[0], atol=tolerance[1])
+    torch.testing.assert_close(
+        actual, expected, rtol=tolerance[0], atol=tolerance[1])
 
 
 @pytest.mark.parametrize("dtype", [torch.float32, torch.bfloat16])

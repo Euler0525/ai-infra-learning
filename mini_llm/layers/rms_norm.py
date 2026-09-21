@@ -28,7 +28,5 @@ class RMSNorm(torch.nn.Module):
         """
         x_fp32 = x.float()
         mean_square = x_fp32.square().mean(dim=-1, keepdim=True)
-
-        return (x_fp32 * torch.rsqrt(mean_square + self.eps) * self.weight.float()).to(
-            x.dtype
-        )
+        normalized = x_fp32 * torch.rsqrt(mean_square + self.eps)
+        return (self.weight * normalized.to(x.dtype)).to(x.dtype)
