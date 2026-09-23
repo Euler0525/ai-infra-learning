@@ -1,38 +1,106 @@
 # AI Infra Learning
 
-一个用于理解 Decoder-only 模型推理主链路的最小工程。仓库当前提供单请求 greedy 生成基线、纯 PyTorch Qwen 参考实现，以及 MHA/MQA 的 KV Cache 与显存带宽实验。
+一个从零实现 mini vLLM 的学习工程。目标模型固定为 `Qwen/Qwen2.5-0.5B-Instruct@7ae5576`，逐步实现模型结构、权重加载、KV Cache、Continuous Batching、Paged Attention、Triton Kernel、CUDA Graph 和 Tensor Parallel。
 
 ## 目录结构
 
 ```text
 .
 ├── mini_llm/
-│   ├── __init__.py
 │   ├── config/                   # 模型、引擎与采样配置
-│   ├── generate.py               # 单请求 greedy 生成入口
+│   ├── layers/
+│   │   ├── rms_norm.py           # RMSNorm
+│   │   ├── rotary_embedding.py   # Qwen2.5 RoPE
+│   │   ├── attention.py          # 完整序列 GQA Attention
+│   │   ├── mlp.py                # SwiGLU
+│   │   └── decoder_layer.py      # Qwen2.5 Decoder Layer
+│   ├── models/
+│   │   └── qwen2p5.py            # 完整 Qwen2.5 模型骨架
+│   ├── engine/
+│   │   ├── prefill_decode.py     # Hugging Face 基线的 Prefill/Decode
+│   │   └── state.py              # 基线生成状态与输出类型
+│   ├── kernels/                  # 后续 Triton Kernel
+│   ├── utils/
+│   ├── generate.py               # Hugging Face 单请求 greedy 基线
 │   ├── preflight.py              # CUDA、BF16 与本地模型检查
 │   ├── reference.py              # Hugging Face 正确性基线
-│   ├── utils/                    # CUDA 同步计时
-│   └── engine/
-│       ├── prefill_decode.py     # Prefill、KV Cache 复用与单 token Decode
-│       └── state.py              # Decode 状态、单步输出与生成结果
-├── tests/                        # 配置和环境测试
+│   └── __init__.py
+├── tests/                        # 配置、算子、单层和完整模型测试
+├── docs/                         # 学习笔记
 ├── mha_mqa_lab/                  # MHA/MQA 数学、KV Cache 与带宽实验
 ├── qwen2p5.py                    # 单文件的详细推理观察脚本
 ├── pyproject.toml
 └── README.md
 ```
 
-## 核心推理链路
+```mermaid
+flowchart TD
+    CLI["python -m mini_llm.generate"] --> Main["generate.main"]
+    Main --> Generate["generate.generate"]
 
-`mini_llm.generate` 使用 Hugging Face `AutoModelForCausalLM` 加载本地 Qwen2.5 权重，并显式拆分推理过程：
+    Generate --> Settings["ModelSettings"]
+    Generate --> Reference["reference.py"]
+    Reference --> Tokenizer["load_tokenizer"]
+    Reference --> HFModel["load_model<br/>AutoModelForCausalLM"]
+    Reference --> Encode["encode_prompt"]
 
-```text
-Prompt -> Chat Template -> Token IDs -> Prefill -> KV Cache
-       -> 逐 token Decode -> greedy argmax -> EOS / max_new_tokens
+    Generate --> Prefill["engine.prefill"]
+    Prefill --> Timer["timed_device_call"]
+    Prefill --> HFModel
+    Prefill --> StepOutput["StepOutput + DecodeState"]
+
+    Generate --> Decode["engine.decode"]
+    Decode --> Timer
+    Decode --> HFModel
+    Decode --> StepOutput
+
+    Generate --> Result["GenerationResult"]
+
+    Config["ModelConfig"] --> Custom["Qwen2p5ForCausalLM"]
+    Custom --> Backbone["Qwen2p5Backbone"]
+    Backbone --> Embedding["Token Embedding"]
+    Backbone --> Layers["24 × DecoderLayer"]
+    Layers --> Norm1["RMSNorm"]
+    Layers --> Attention["GQAAttention"]
+    Attention --> RoPE["RotaryEmbedding"]
+    RoPE --> Rotate["rotate_half"]
+    Layers --> Norm2["RMSNorm"]
+    Layers --> MLP["SwiGLU"]
+    Backbone --> FinalNorm["Final RMSNorm"]
+    Custom --> LMHead["LM Head<br/>与 Embedding 共享权重"]
 ```
 
-当前阶段使用 Hugging Face 模型作为正确性基线；后续自定义模型、算子和 kernel 分别放入 `models/`、`layers/` 和 `kernels/`。
+## 核心推理链路
+
+### Hugging Face Oracle
+
+`mini_llm.generate` 使用 Hugging Face `AutoModelForCausalLM` 加载本地权重，并显式拆分推理过程：
+
+```text
+Prompt → Chat Template → Token IDs → Prefill → KV Cache
+       → 逐 token Decode → greedy argmax → EOS / max_new_tokens
+```
+
+这条路径是后续实现的正确性基线，不是最终推理后端。
+
+### 自定义 Qwen2.5
+
+`mini_llm.models.Qwen2p5ForCausalLM` 已实现完整无 Cache 前向：
+
+```text
+Token IDs
+  → Token Embedding
+  → 24 × Decoder Layer
+      → RMSNorm
+      → GQA Self-Attention + RoPE
+      → Residual
+      → RMSNorm
+      → SwiGLU MLP
+      → Residual
+  → Final RMSNorm
+  → Shared LM Head
+  → Logits
+```
 
 ## 基础知识
 
@@ -124,23 +192,24 @@ if __name__ == "__main__":
 
 ### Decoder Layer
 
-整个 Transformer Decoder 会将一个 Decoder Layer 会堆叠多次，每一层结构如下
+Qwen2.5-0.5B-Instruct 将 Decoder Layer 堆叠 24 次，每一层结构如下：
 
 ```plaintext
 DecoderLayer
 │
 ├── Attention Block
 │   ├── RMSNorm              # 控制数据规模
-│   ├── GQA Self-Attention   # 和其他 token 交流提取上下文信息
+│   ├── GQA Self-Attention   # 14 个 Q Head、2 个 KV Head、head_dim=64
+│   ├── RoPE                 # 只旋转 Q/K，rope_theta=1_000_000
 │   └── Residual Connection  # 保留原信息 + 新上下文信息
 │
 └── FFN Block
     ├── RMSNorm              # 再次稳定数值
-    ├── SwiGLU MLP           # 每个 token 内部做非线性特征变换
+    ├── SwiGLU MLP           # 896 → 4864 → 896
     └── Residual Connection  # 保留旧信息 + 新特征
 ```
 
-先让每个 token看一遍上下文，再让每个 token 自己做一次非线性加工，将结果传给下一层。数学表达式为
+先让每个 token 看一遍上下文，再让每个 token 自己做一次非线性加工，将结果传给下一层。数学表达式为：
 
 $$
 \begin{aligned}
@@ -172,39 +241,37 @@ GPU process
 python -m pip install -e ".[test]"
 ```
 
-运行生成入口
-
-```powershell
-python -m mini_llm.generate --prompt "Explain KV cache briefly." --max-new-tokens 32
-```
-
-模型默认使用 CUDA、BF16 和 `local_files_only=True`，因此需要 NVIDIA GPU，且指定 revision 的模型权重必须已缓存在本地。运行环境检查：
+先检查 CUDA、BF16、Tokenizer、配置和指定 revision 的本地模型文件：
 
 ```powershell
 python -m mini_llm.preflight
 ```
 
-若要观察 token、logits、Top 5 候选、KV Cache 和显存峰值，可运行：
+运行 Hugging Face greedy 生成基线：
+
+```powershell
+python -m mini_llm.generate --prompt "Explain KV cache briefly." --max-new-tokens 32
+```
+
+模型默认使用 CUDA、BF16 和 `local_files_only=True`，因此需要支持 BF16 的 NVIDIA GPU，且指定 revision 的模型文件必须已缓存在本地。
+
+运行所有测试：
+
+```powershell
+python -m pytest tests -q
+```
+
+若同步目录不允许 pytest 创建 `.pytest_cache`，可以禁用 cache provider：
+
+```powershell
+python -m pytest tests -q -p no:cacheprovider
+```
+
+若要观察 Hugging Face 基线的 token、logits、Top 5 候选、KV Cache 和显存峰值，可运行：
 
 ```powershell
 python qwen2p5.py
 ```
-
-## MHA 与 MQA 实验
-
-独立实验目录 `mha_mqa_lab/` 从数学、张量维度、KV Cache 和显存带宽角度比较 MHA 与 MQA。先运行维度与等价关系演示：
-
-```powershell
-python -m mha_mqa_lab.demo
-```
-
-在 CUDA GPU 上运行带显存保护的单层 decode 微基准：
-
-```powershell
-python -m mha_mqa_lab.benchmark
-```
-
-推导、论文数据、测量口径和参数说明见 [MHA/MQA 实验文档](mha_mqa_lab/README.md)。
 
 ## 参考资料
 
