@@ -289,6 +289,7 @@ name = "mini-llm-runtime"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
+    { name = "safetensors" },
     { name = "torch" },
     { name = "transformers" },
 ]
@@ -301,6 +302,7 @@ test = [
 [package.metadata]
 requires-dist = [
     { name = "pytest", marker = "extra == 'test'", specifier = ">=9.1.1" },
+    { name = "safetensors", specifier = ">=0.8.0" },
     { name = "torch", specifier = ">=2.13.0", index = "https://download.pytorch.org/whl/cu130" },
     { name = "transformers", specifier = ">=5.15.0" },
 ]

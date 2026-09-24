@@ -1,10 +1,15 @@
+from pathlib import Path
+
 import pytest
 import torch
+from huggingface_hub import snapshot_download
+from safetensors import safe_open
 from transformers import AutoModelForCausalLM, Qwen2Config
 from transformers import Qwen2ForCausalLM as HFQwen2ForCausalLM
 
 from mini_llm.config import ModelConfig, ModelSettings
 from mini_llm.models import Qwen2p5ForCausalLM
+from mini_llm.utils import load_safetensors_weights
 
 
 @pytest.fixture
@@ -107,6 +112,11 @@ def test_qwen2_5_architecture() -> None:
 def test_real_weights_match_hugging_face() -> None:
     settings = ModelSettings()
     config = ModelConfig.from_pretrained(settings)
+    model_path = Path(snapshot_download(
+        settings.model_id,
+        revision=settings.revision,
+        local_files_only=True,
+    ))
     hf_model = AutoModelForCausalLM.from_pretrained(
         settings.model_id,
         revision=settings.revision,
@@ -116,7 +126,34 @@ def test_real_weights_match_hugging_face() -> None:
     ).to("cuda").eval()
     model = Qwen2p5ForCausalLM(config).to(
         device="cuda", dtype=torch.bfloat16).eval()
-    model.load_state_dict(hf_model.state_dict())
+    report = load_safetensors_weights(
+        model,
+        model_path / "model.safetensors",
+    )
+    assert report.missing_keys == ()
+    assert report.unexpected_keys == ()
+    assert model.lm_head.weight.data_ptr() == \
+        model.model.embed_tokens.weight.data_ptr()
+
+    samples = {
+        "model.embed_tokens.weight": model.model.embed_tokens.weight[:2],
+        "model.layers.0.self_attn.q_proj.bias":
+            model.model.layers[0].self_attn.q_proj.bias,
+        "model.layers.12.mlp.up_proj.weight":
+            model.model.layers[12].mlp.up_proj.weight[:2],
+        "model.layers.23.post_attention_layernorm.weight":
+            model.model.layers[23].post_attention_layernorm.weight,
+        "model.norm.weight": model.model.norm.weight,
+    }
+    with safe_open(
+        model_path / "model.safetensors",
+        framework="pt",
+        device="cpu",
+    ) as checkpoint:
+        for name, actual in samples.items():
+            expected = checkpoint.get_slice(name)[:actual.shape[0]]
+            torch.testing.assert_close(actual.cpu(), expected)
+
     input_ids = torch.tensor([[151644, 8948, 198, 151645]], device="cuda")
     positions = torch.arange(input_ids.shape[1], device="cuda").unsqueeze(0)
 
