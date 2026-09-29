@@ -39,13 +39,17 @@ def test_matches_hugging_face_for_prefill_and_batched_positions(
         [[0, 1, 15, 16, 1024], [16, 15, 1, 0, 1024]], device=device
     )
 
-    rope = RotaryEmbedding(head_dim, rope_config.rope_parameters["rope_theta"])
-    actual_q, actual_k = rope.to(device)(q, k, positions)
+    rope = RotaryEmbedding(
+        head_dim,
+        rope_config.rope_parameters["rope_theta"],
+    ).to(device=device, dtype=dtype)
+    actual_q, actual_k = rope(q, k, positions)
     cos, sin = Qwen2RotaryEmbedding(rope_config).to(device)(q, positions)
     expected_q, expected_k = apply_rotary_pos_emb(
         q.transpose(1, 2), k.transpose(1, 2), cos, sin
     )
 
+    assert rope.inv_freq.dtype == torch.float32
     tolerance = 1e-2 if dtype == torch.bfloat16 else 1e-5
     torch.testing.assert_close(
         actual_q, expected_q.transpose(1, 2), atol=tolerance, rtol=tolerance

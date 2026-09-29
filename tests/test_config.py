@@ -3,6 +3,7 @@ from dataclasses import replace
 import pytest
 
 from mini_llm.config import (
+    DEFAULT_MAX_NEW_TOKENS,
     EngineConfig,
     ModelConfig,
     ModelSettings,
@@ -103,7 +104,7 @@ def test_accepts_qwen2_single_and_dual_gpu_configs() -> None:
 def test_sampling_params_validation() -> None:
     params = SamplingParams()
     assert params.temperature == 0.0
-    assert params.max_tokens == 10
+    assert params.max_tokens == DEFAULT_MAX_NEW_TOKENS
     assert not params.ignore_eos
     assert params.seed == 0
 

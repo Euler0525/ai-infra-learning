@@ -19,7 +19,7 @@ def generate(
 
     settings = settings or ModelSettings()
     tokenizer = load_tokenizer(settings)
-    model = load_model(settings)
+    model = load_model(settings, attention_implementation="eager")
     device = str(next(model.parameters()).device)
     inputs = encode_prompt(tokenizer, prompt, device)
 

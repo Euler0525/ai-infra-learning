@@ -4,10 +4,10 @@ import pytest
 import torch
 from huggingface_hub import snapshot_download
 from safetensors import safe_open
-from transformers import AutoModelForCausalLM, Qwen2Config
+from transformers import AutoModelForCausalLM, AutoTokenizer, Qwen2Config
 from transformers import Qwen2ForCausalLM as HFQwen2ForCausalLM
 
-from mini_llm.config import ModelConfig, ModelSettings
+from mini_llm.config import ModelConfig, ModelSettings, REFERENCE_PROMPT
 from mini_llm.engine import KVCache
 from mini_llm.models import Qwen2p5ForCausalLM
 from mini_llm.utils import load_safetensors_weights
@@ -135,6 +135,10 @@ def test_real_weights_match_hugging_face() -> None:
     assert report.unexpected_keys == ()
     assert model.lm_head.weight.data_ptr() == \
         model.model.embed_tokens.weight.data_ptr()
+    assert all(
+        layer.self_attn.rotary_emb.inv_freq.dtype == torch.float32
+        for layer in model.model.layers
+    )
 
     samples = {
         "model.embed_tokens.weight": model.model.embed_tokens.weight[:2],
@@ -155,7 +159,20 @@ def test_real_weights_match_hugging_face() -> None:
             expected = checkpoint.get_slice(name)[:actual.shape[0]]
             torch.testing.assert_close(actual.cpu(), expected)
 
-    input_ids = torch.tensor([[151644, 8948, 198, 151645]], device="cuda")
+    tokenizer = AutoTokenizer.from_pretrained(
+        settings.model_id,
+        revision=settings.revision,
+        local_files_only=True,
+    )
+    rendered_prompt = tokenizer.apply_chat_template(
+        [{"role": "user", "content": REFERENCE_PROMPT}],
+        tokenize=False,
+        add_generation_prompt=True,
+    )
+    input_ids = tokenizer(
+        rendered_prompt,
+        return_tensors="pt",
+    ).input_ids.to("cuda")
     positions = torch.arange(input_ids.shape[1], device="cuda").unsqueeze(0)
 
     with torch.no_grad():
@@ -166,7 +183,7 @@ def test_real_weights_match_hugging_face() -> None:
         cache = KVCache.allocate(
             config,
             batch_size=1,
-            max_model_len=input_ids.shape[1] + 4,
+            max_model_len=input_ids.shape[1] + 32,
             device="cuda",
             dtype=torch.bfloat16,
         )
@@ -181,12 +198,12 @@ def test_real_weights_match_hugging_face() -> None:
         generated_token_ids = []
         past_key_values = hf_outputs.past_key_values
         hf_logits = expected
-        for step in range(4):
+        for step in range(32):
             actual_token = cached_logits.argmax(dim=-1)
             expected_token = hf_logits.argmax(dim=-1)
             assert actual_token.item() == expected_token.item()
             generated_token_ids.append(actual_token.item())
-            if step == 3:
+            if step == 31:
                 break
 
             cached_logits = model.decode(actual_token.unsqueeze(1), cache)
@@ -212,4 +229,4 @@ def test_real_weights_match_hugging_face() -> None:
     assert set(actual_top5) == set(expected_top5)
     assert difference.mean() < 1e-1
     assert difference.max() < 6e-1
-    assert len(generated_token_ids) == 4
+    assert len(generated_token_ids) == 32
