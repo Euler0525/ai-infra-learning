@@ -18,11 +18,20 @@ class DecoderLayer(nn.Module):
         self.mlp = SwiGLU(config)
 
     def forward(
-        self, hidden_states: torch.Tensor, positions: torch.Tensor
+        self,
+        hidden_states: torch.Tensor,
+        positions: torch.Tensor,
+        kv_cache: tuple[torch.Tensor, torch.Tensor] | None = None,
+        cache_position: int = 0,
     ) -> torch.Tensor:
         residual = hidden_states
         hidden_states = self.input_layernorm(hidden_states)
-        hidden_states = self.self_attn(hidden_states, positions)
+        hidden_states = self.self_attn(
+            hidden_states,
+            positions,
+            kv_cache,
+            cache_position,
+        )
         hidden_states = residual + hidden_states
 
         residual = hidden_states

@@ -1,3 +1,4 @@
+from mini_llm.engine.kv_cache import KVCache
 from mini_llm.engine.state import StepOutput, DecodeState, GenerationResult
 from mini_llm.engine.prefill_decode import (
     prefill,
@@ -5,6 +6,7 @@ from mini_llm.engine.prefill_decode import (
 )
 
 __all__ = [
+    "KVCache",
     "StepOutput",
     "DecodeState",
     "GenerationResult",

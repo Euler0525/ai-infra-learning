@@ -4,7 +4,7 @@ import torch
 
 
 REFERENCE_PROMPT = "What's for lunch today?"
-DEFAULT_MAX_NEW_TOKENS = 10
+DEFAULT_MAX_NEW_TOKENS = 1000
 
 
 @dataclass(frozen=True)

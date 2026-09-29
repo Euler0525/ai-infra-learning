@@ -8,6 +8,7 @@ from transformers import AutoModelForCausalLM, Qwen2Config
 from transformers import Qwen2ForCausalLM as HFQwen2ForCausalLM
 
 from mini_llm.config import ModelConfig, ModelSettings
+from mini_llm.engine import KVCache
 from mini_llm.models import Qwen2p5ForCausalLM
 from mini_llm.utils import load_safetensors_weights
 
@@ -159,7 +160,49 @@ def test_real_weights_match_hugging_face() -> None:
 
     with torch.no_grad():
         logits = model.compute_logits(model(input_ids, positions))[:, -1]
-        expected = hf_model(input_ids).logits[:, -1]
+        hf_outputs = hf_model(input_ids, use_cache=True)
+        expected = hf_outputs.logits[:, -1]
+
+        cache = KVCache.allocate(
+            config,
+            batch_size=1,
+            max_model_len=input_ids.shape[1] + 4,
+            device="cuda",
+            dtype=torch.bfloat16,
+        )
+        cached_logits = model.prefill(input_ids, cache)
+        torch.testing.assert_close(
+            cached_logits,
+            logits,
+            rtol=5e-2,
+            atol=5e-2,
+        )
+
+        generated_token_ids = []
+        past_key_values = hf_outputs.past_key_values
+        hf_logits = expected
+        for step in range(4):
+            actual_token = cached_logits.argmax(dim=-1)
+            expected_token = hf_logits.argmax(dim=-1)
+            assert actual_token.item() == expected_token.item()
+            generated_token_ids.append(actual_token.item())
+            if step == 3:
+                break
+
+            cached_logits = model.decode(actual_token.unsqueeze(1), cache)
+            hf_outputs = hf_model(
+                input_ids=expected_token.unsqueeze(1),
+                past_key_values=past_key_values,
+                use_cache=True,
+            )
+            hf_logits = hf_outputs.logits[:, -1]
+            past_key_values = hf_outputs.past_key_values
+            torch.testing.assert_close(
+                cached_logits,
+                hf_logits,
+                rtol=5e-2,
+                atol=6e-1,
+            )
 
     actual_top5 = logits.topk(5).indices[0].tolist()
     expected_top5 = expected.topk(5).indices[0].tolist()
@@ -169,3 +212,4 @@ def test_real_weights_match_hugging_face() -> None:
     assert set(actual_top5) == set(expected_top5)
     assert difference.mean() < 1e-1
     assert difference.max() < 6e-1
+    assert len(generated_token_ids) == 4

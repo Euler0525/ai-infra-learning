@@ -253,6 +253,14 @@ python -m mini_llm.preflight
 python -m mini_llm.generate --prompt "Explain KV cache briefly." --max-new-tokens 32
 ```
 
+运行自定义模型、Safetensors 权重和连续 KV Cache 的单请求生成器：
+
+```powershell
+python -m mini_llm.local_generate --prompt "Explain KV cache briefly." --max-new-tokens 32
+```
+
+该入口不调用 `AutoModelForCausalLM`。Hugging Face 只用于 Tokenizer，模型前向、KV Cache、greedy/temperature 采样和停止条件均由 `mini_llm` 实现。可通过 `--temperature`、`--seed`、`--ignore-eos` 和 `--max-model-len` 调整生成行为。
+
 模型默认使用 CUDA、BF16 和 `local_files_only=True`，因此需要支持 BF16 的 NVIDIA GPU，且指定 revision 的模型文件必须已缓存在本地。
 
 运行所有测试：

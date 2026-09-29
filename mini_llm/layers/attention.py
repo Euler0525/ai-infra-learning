@@ -26,7 +26,11 @@ class GQAAttention(nn.Module):
         self.rotary_emb = RotaryEmbedding(self.head_dim, config.rope_theta)
 
     def forward(
-        self, hidden_states: torch.Tensor, positions: torch.Tensor
+        self,
+        hidden_states: torch.Tensor,
+        positions: torch.Tensor,
+        kv_cache: tuple[torch.Tensor, torch.Tensor] | None = None,
+        cache_position: int = 0,
     ) -> torch.Tensor:
         batch_size, seq_len, _ = hidden_states.shape
         q = self.q_proj(hidden_states).view(
@@ -41,15 +45,30 @@ class GQAAttention(nn.Module):
 
         q, k = self.rotary_emb(q, k, positions)
         q = q.transpose(1, 2)
-        k = k.transpose(1, 2).repeat_interleave(
+        k = k.transpose(1, 2)
+        v = v.transpose(1, 2)
+
+        if kv_cache is not None:
+            key_cache, value_cache = kv_cache
+            cache_end = cache_position + seq_len
+            key_cache[:, :, cache_position:cache_end].copy_(k)
+            value_cache[:, :, cache_position:cache_end].copy_(v)
+            k = key_cache[:, :, :cache_end]
+            v = value_cache[:, :, :cache_end]
+
+        k = k.repeat_interleave(
             self.num_key_value_groups, dim=1)
-        v = v.transpose(1, 2).repeat_interleave(
+        v = v.repeat_interleave(
             self.num_key_value_groups, dim=1)
 
         scores = (q @ k.transpose(-2, -1)) * self.scaling
-        future = torch.ones(
-            seq_len, seq_len, device=hidden_states.device, dtype=torch.bool
-        ).triu(1)
+        query_positions = torch.arange(
+            cache_position,
+            cache_position + seq_len,
+            device=hidden_states.device,
+        )
+        key_positions = torch.arange(k.shape[-2], device=hidden_states.device)
+        future = key_positions.unsqueeze(0) > query_positions.unsqueeze(1)
         scores = scores.masked_fill(future, torch.finfo(scores.dtype).min)
         weights = torch.softmax(
             scores, dim=-1, dtype=torch.float32).to(q.dtype)
