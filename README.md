@@ -18,6 +18,7 @@
 │   │   └── qwen2p5.py            # 完整 Qwen2.5 模型骨架
 │   ├── engine/
 │   │   ├── prefill_decode.py     # Hugging Face 基线的 Prefill/Decode
+│   │   ├── sequence.py           # Sequence 与请求状态
 │   │   └── state.py              # 基线生成状态与输出类型
 │   ├── kernels/                  # 后续 Triton Kernel
 │   ├── utils/
