@@ -17,6 +17,7 @@
 │   ├── models/
 │   │   └── qwen2p5.py            # 完整 Qwen2.5 模型骨架
 │   ├── engine/
+│   │   ├── block_manager.py      # 物理 KV Cache block 管理
 │   │   ├── prefill_decode.py     # Hugging Face 基线的 Prefill/Decode
 │   │   ├── sequence.py           # Sequence 与请求状态
 │   │   └── state.py              # 基线生成状态与输出类型
